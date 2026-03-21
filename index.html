@@ -386,6 +386,12 @@ body::after{content:'';position:fixed;inset:0;
 <!-- ══ HUB SCREEN ══ -->
 <div class="screen" id="hub-screen">
   <div id="hub-banner-container"></div>
+  <!-- SHELL INTEGRATION: Return to hub — only shown when launched from shell -->
+  <div id="shell-return-btn" style="display:none;margin-bottom:12px">
+    <button class="btn full" onclick="returnToShell()" style="border-color:var(--teal);color:var(--teal);">
+      <span>← Return to American Chronicles Hub</span>
+    </button>
+  </div>
   <div class="section-head">Unit 4A — The Roaring Twenties</div>
   <div class="eq-banner" id="hub-eq">
     <strong>Essential Question:</strong> How do societies react to change?
@@ -1427,10 +1433,12 @@ function initNewGame(name,teacher,period){
 function afterLogin(){
   document.getElementById('game-header').style.display='block';
   document.getElementById('bottom-nav').style.display='flex';
-  // Shell integration
-  if(window.SHELL_MODE){
-    document.getElementById('shell-nav-btn').style.display='flex';
-    document.getElementById('completion-shell-btn').style.display='block';
+  // ── SHELL INTEGRATION: reveal shell buttons if launched from shell ──
+  if (getShellProfile()) {
+    const navBtn = document.getElementById('shell-nav-btn');
+    if (navBtn) navBtn.style.display = 'flex';
+    const retBtn = document.getElementById('shell-return-btn');
+    if (retBtn) retBtn.style.display = 'block';
   }
   renderHub();
   showScreen('hub-screen');
@@ -1774,6 +1782,11 @@ function showUnitComplete(){
   const finalBadge=BADGES.find(b=>b.id==='roaring_twenties');
   if(finalBadge&&!G.badgesEarned.includes(finalBadge.id))G.badgesEarned.push(finalBadge.id);
   saveGame();syncScore();
+  // ── SHELL INTEGRATION: write completion back to shell profile ──
+  notifyShellComplete();
+  // Show shell return button if launched from shell
+  const shellBtn = document.getElementById('completion-shell-btn');
+  if (shellBtn && getShellProfile()) shellBtn.style.display = 'block';
 
   document.getElementById('completion-name').textContent=G.name;
   document.getElementById('completion-rank').textContent=getRank(G.score);
@@ -2038,20 +2051,83 @@ async function resetAllScores(){
 }
 
 // Shell integration
-function returnToShell(){if(window.parent&&window.parent!==window)window.parent.postMessage({type:'game_complete',game:'boomorbust',score:G?G.score:0},'*');}
+// ═══════════════════════════════════════════════════════════════════════
+//  AMERICAN CHRONICLES SHELL INTEGRATION
+// ═══════════════════════════════════════════════════════════════════════
+const SHELL_KEY     = 'ac_shell_state';
+const SHELL_UNIT_ID = 'unit4a';
+
+function getShellProfile() {
+  try {
+    const raw = localStorage.getItem(SHELL_KEY);
+    if (!raw) return null;
+    const p = JSON.parse(raw);
+    if (p && p.name && p.name !== 'Guest') return p;
+  } catch(e) {}
+  return null;
+}
+
+function applyShellProfile(profile) {
+  const avatarMap = {
+    scholar:'factory_worker', rebel:'flapper', soldier:'factory_worker',
+    reporter:'flapper', pioneer:'factory_worker', diplomat:'businessman',
+    worker:'factory_worker', artist:'jazz_musician',
+  };
+  initNewGame(profile.name, 'shell', profile.period || '0');
+  G.avatarId    = avatarMap[profile.avatar] || 'factory_worker';
+  G.isTeacher   = profile.isTeacher || false;
+  G.shellLinked = true;
+  saveGame();
+}
+
+function notifyShellComplete() {
+  try {
+    const raw = localStorage.getItem(SHELL_KEY);
+    if (!raw) return;
+    const s = JSON.parse(raw);
+    if (!s.unitsCompleted) s.unitsCompleted = [];
+    if (!s.unitsCompleted.includes(SHELL_UNIT_ID)) s.unitsCompleted.push(SHELL_UNIT_ID);
+    localStorage.setItem(SHELL_KEY, JSON.stringify(s));
+  } catch(e) {}
+}
+
+function returnToShell() {
+  window.location.href = 'https://olsonjoshua-code.github.io/American-Chronicles-Shell/';
+}
 
 // ═══════════════════════════════════════════
 // INIT
 // ═══════════════════════════════════════════
 window.addEventListener('DOMContentLoaded',()=>{
-  // Check shell mode
-  if(window.SHELL_MODE||window.location.search.includes('shell=1')){
-    document.getElementById('shell-nav-btn').style.display='flex';
+
+  // ── SHELL INTEGRATION: auto-login if shell profile exists ──
+  const shellProfile = getShellProfile();
+  if (shellProfile) {
+    const saved = loadGame();
+    if (saved && saved.name && saved.teacher === 'shell') {
+      // Returning shell user — continue existing save
+      G = saved;
+      afterLogin();
+      notify('Welcome back, ' + G.name + '!', 'green');
+    } else {
+      // First time from shell — apply profile
+      applyShellProfile(shellProfile);
+      if (shellProfile.isTeacher) {
+        afterLogin();
+        notify('Welcome, ' + shellProfile.name + '! 📊', 'green');
+      } else {
+        afterLogin();
+        showScreen('char-screen');
+        renderCharScreen();
+        notify('Welcome, ' + shellProfile.name + '! Profile loaded from hub.', 'green');
+      }
+    }
+    return;
   }
-  // Check existing save
+
+  // ── No shell profile — normal standalone login ──
   const saved=loadGame();
   if(saved&&saved.name){
-    // Show resume option on title
     const resumeDiv=document.createElement('div');
     resumeDiv.style.cssText='background:var(--bg2);border:1px solid var(--gold2);padding:12px 16px;margin:12px 0;text-align:left;cursor:pointer;';
     resumeDiv.innerHTML=`<div style="font-family:var(--bebas);font-size:11px;color:var(--text3);letter-spacing:2px;margin-bottom:4px">CONTINUE WHERE YOU LEFT OFF</div>
