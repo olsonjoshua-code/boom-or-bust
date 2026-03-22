@@ -382,6 +382,19 @@ input,textarea{-webkit-user-select:text!important;user-select:text!important;}
   <div id="td-roster"></div>
 </div>
 
+<!-- WELCOME GATE -->
+<div id="welcome-gate" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.96);z-index:1100;align-items:center;justify-content:center;">
+  <div style="background:var(--bg2);border:1px solid var(--gold2);padding:28px 24px;max-width:360px;width:100%;text-align:center">
+    <div style="margin:0 auto 12px;width:64px;height:64px" id="wg-avatar"></div>
+    <div style="font-family:var(--bebas);font-size:11px;color:var(--text3);letter-spacing:3px;margin-bottom:6px">WELCOME BACK</div>
+    <div style="font-family:var(--playfair);font-size:22px;color:var(--cream);font-style:italic;margin-bottom:4px" id="wg-name"></div>
+    <div style="font-family:var(--dm);font-size:10px;color:var(--teal2);margin-bottom:4px" id="wg-detail"></div>
+    <div style="font-family:var(--dm);font-size:9px;color:var(--text3);margin-bottom:20px" id="wg-progress"></div>
+    <button class="btn full green" onclick="welcomeContinue()"><span>Continue as this student</span></button>
+    <button class="btn full" onclick="welcomeNewPlayer()" style="margin-top:8px;border-color:var(--border2);color:var(--text2);font-size:12px"><span>That’s not me — switch player</span></button>
+  </div>
+</div>
+
 <!-- LOGIN GATE -->
 <div id="code-gate-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.95);z-index:1000;align-items:center;justify-content:center;">
   <div style="background:var(--bg2);border:1px solid var(--gold2);padding:28px 24px;max-width:360px;width:100%;text-align:center">
@@ -1192,7 +1205,36 @@ function updateHUD(){
 
 // ── LOGIN ────────────────────────────────────────────────────────────────────
 let _loginTeacher='',_loginPeriod='';
-function showLoginGate(){const saved=loadGame();if(saved&&saved.name){G=saved;afterLogin();}else{document.getElementById('code-gate-overlay').style.display='flex';goToStep(1);}}
+function showLoginGate(){
+  const sp=getShellProfile();const saved=loadGame();
+  if(saved&&saved.name){showWelcomeGate(saved,sp||null);return;}
+  if(sp&&sp.name&&sp.name!=='Guest'){showWelcomeGate(null,sp);return;}
+  document.getElementById('code-gate-overlay').style.display='flex';goToStep(1);
+}
+function showWelcomeGate(savedGame,shellProfile){
+  const wg=document.getElementById('welcome-gate');
+  const name=savedGame?savedGame.name:(shellProfile?shellProfile.name:'');
+  const period=savedGame?savedGame.period:(shellProfile?shellProfile.period:'');
+  document.getElementById('wg-avatar').innerHTML=renderAvatar(60);
+  document.getElementById('wg-name').textContent=name||'Unknown';
+  document.getElementById('wg-detail').textContent=period&&period!=='0'?'Mr. Olson — Period '+period:'Guest / Other';
+  let progress='No progress saved yet';
+  if(savedGame&&savedGame.chaptersCompleted){const ch=savedGame.chaptersCompleted.length;progress=ch>0?ch+' of '+CHAPTERS.length+' chapters done — '+(savedGame.score||0).toLocaleString()+' pts':'Starting fresh';}
+  document.getElementById('wg-progress').textContent=progress;
+  wg._savedGame=savedGame;wg._shellProfile=shellProfile;wg.style.display='flex';
+}
+function welcomeContinue(){
+  const wg=document.getElementById('welcome-gate');const saved=wg._savedGame;const sp=wg._shellProfile;
+  wg.style.display='none';
+  if(saved){G=saved;saveGame();}
+  else if(sp){G=newGame(sp.name,'shell',sp.period||'0');G.shellLinked=true;saveGame();}
+  afterLogin();notify('Welcome back, '+G.name+'!','green');
+}
+function welcomeNewPlayer(){
+  document.getElementById('welcome-gate').style.display='none';
+  try{localStorage.removeItem(SAVE_KEY);}catch(e){}
+  G=null;document.getElementById('code-gate-overlay').style.display='flex';goToStep(1);
+}
 function goToStep(n){[1,2,3].forEach(i=>document.getElementById('login-step-'+i).style.display=i===n?'block':'none');}
 function selectTeacher(key){
   if(key==='guest'){_loginTeacher='guest';_loginPeriod='0';goToStep(3);document.getElementById('login-step3-label').textContent='Playing as guest — enter your name to begin.';return;}
@@ -1521,21 +1563,8 @@ async function resetAllScores(){if(!confirm('Reset ALL scores for Boom or Bust?'
 
 // ── BOOT ──────────────────────────────────────────────────────────────────────
 window.addEventListener('DOMContentLoaded',()=>{
-  const shellProfile=getShellProfile();
-  if(shellProfile&&shellProfile.name&&shellProfile.name!=='Guest'){
-    const saved=loadGame();
-    if(saved&&saved.name){G=saved;afterLogin();notify('Welcome back, '+G.name+'!','green');}
-    else{G=newGame(shellProfile.name,'shell',shellProfile.period||'0');G.shellLinked=true;saveGame();afterLogin();notify('Welcome, '+shellProfile.name+'!','green');}
-    return;
-  }
-  const saved=loadGame();
-  if(saved&&saved.name){
-    const resumeDiv=document.createElement('div');
-    resumeDiv.style.cssText='background:var(--bg2);border:1px solid var(--gold2);padding:12px 16px;margin:12px 0;text-align:left;cursor:pointer;';
-    resumeDiv.innerHTML=`<div style="font-family:var(--bebas);font-size:11px;color:var(--text3);letter-spacing:2px;margin-bottom:4px">CONTINUE WHERE YOU LEFT OFF</div><div style="font-family:var(--playfair);font-size:15px;color:var(--cream);font-style:italic">${saved.name}</div><div style="font-family:var(--dm);font-size:10px;color:var(--teal2)">${getRank(saved.score)} — ${(saved.score||0).toLocaleString()} pts — ${saved.chaptersCompleted.length} chapters done</div>`;
-    resumeDiv.onclick=()=>{G=saved;afterLogin();};
-    const ts=document.getElementById('title-screen');const fb=ts.querySelector('.btn.full');if(fb)ts.insertBefore(resumeDiv,fb);
-  }
+  const sp=getShellProfile();const saved=loadGame();
+  if((saved&&saved.name)||sp){showLoginGate();return;}
 });
 </script>
 </body>
